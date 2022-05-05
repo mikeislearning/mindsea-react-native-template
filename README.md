@@ -98,5 +98,13 @@ Android Studio comes with emulators that can be installed via the AVD Manager, a
 **Troubleshooting:**
 
 - Make sure to run either `npm install` in the project's root directory before running the project. The project dependencies _are not_ committed to the repository, so this step is necessary.
+- For iOS, make sure you install the cocoapod dependencies:
+
+```
+/mindsea-react-native-template $cd ios
+```
+```
+/mindsea-react-native-template/ios $pod install
+```
 - For Android, make sure to have set up an emulator with a supported SDK version, using the AVD Manager: https://developer.android.com/studio/run/managing-avds
   - It may also help if you've created a fresh to Android project (it can be empty) to run the emulator before attempting to run the project.
