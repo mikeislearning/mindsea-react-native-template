@@ -1,0 +1,242 @@
+format_version: '11'
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+project_type: react-native
+trigger_map:
+  - push_branch: main
+    workflow: development
+workflows:
+  dev-android:
+    steps:
+      - activate-ssh-key@4:
+          run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+      - git-clone@6: {}
+      - nvm@1:
+          inputs:
+            - node_version: 14.17.3
+      - yarn@0:
+          inputs:
+            - verbose_log: 'yes'
+            - cache_local_deps: 'yes'
+            - command: install
+          title: Run yarn install
+      - yarn@0:
+          title: Run yarn lint
+          inputs:
+            - verbose_log: 'yes'
+            - command: lint
+      - install-missing-android-tools@2: {}
+      - change-android-versioncode-and-versionname@1:
+          inputs:
+            - build_gradle_path: '$PROJECT_LOCATION/app/build.gradle'
+      - yarn@0:
+          inputs:
+            - command:
+                react-native bundle --dev false --platform android --entry-file
+                index.js --bundle-output ./android/app/src/main/assets/index.android.bundle
+                --assets-dest ./android/app/src/main/res
+      - android-build@0:
+          inputs:
+            - variant: debug
+            - project_location: '$PROJECT_LOCATION'
+            - arguments: -Dorg.gradle.jvmargs="-Xmx2048m -XX:+HeapDumpOnOutOfMemoryError"
+            - module: app
+      - firebase-app-distribution@0:
+          inputs:
+            - app: '$FIREBASE_ANDROID_APP_ID'
+            - release_notes: |-
+                Staging Build
+                Commit:$BITRISE_GIT_COMMIT
+                $BITRISE_GIT_MESSAGE
+            - testers: ''
+            - groups: mindsea
+            - firebase_token: '$FIREBASE_CI_ACCESS_TOKEN'
+      - slack@3:
+          inputs:
+            - webhook_url: '$SLACK_WEB_HOOK'
+  dev-ios:
+    steps:
+      - activate-ssh-key@4:
+          run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+      - git-clone@6: {}
+      - cache-pull@2: {}
+      - nvm@1:
+          inputs:
+            - node_version: 14.17.3
+      - yarn@0:
+          inputs:
+            - verbose_log: 'yes'
+            - command: install
+          title: Run yarn install
+      - yarn@0:
+          title: Run yarn lint
+          inputs:
+            - verbose_log: 'yes'
+            - command: lint
+      - cocoapods-install@2: {}
+      - yarn@0:
+          inputs:
+            - command:
+                react-native bundle --entry-file index.js --platform ios --dev
+                false --bundle-output ios/main.jsbundle --assets-dest ios
+      - set-xcode-build-number@1:
+          inputs:
+            - plist_path: '$PLIST_PATH_IOS'
+      - ios-auto-provision-appstoreconnect@2:
+          inputs:
+            - configuration: AdHoc
+            - distribution_type: ad-hoc
+      - xcode-archive@3:
+          inputs:
+            - compile_bitcode: 'no'
+            - configuration: AdHoc
+            - export_method: ad-hoc
+      - firebase-app-distribution@0:
+          inputs:
+            - app: '$FIREBASE_IOS_APP_ID'
+            - release_notes: |-
+                Staging Build
+                Commit:$BITRISE_GIT_COMMIT
+                $BITRISE_GIT_MESSAGE
+            - testers: ''
+            - groups: mindsea
+            - firebase_token: '$FIREBASE_CI_ACCESS_TOKEN'
+      - slack@3:
+          inputs:
+            - webhook_url: '$SLACK_WEB_HOOK'
+      - cache-push@2: {}
+  development:
+    steps:
+      - trigger-bitrise-workflow@0:
+          inputs:
+            - workflow_id: dev-ios
+            - api_token: '$BITRISE_BUILD_TOKEN'
+          is_always_run: true
+      - trigger-bitrise-workflow@0:
+          inputs:
+            - workflow_id: dev-android
+            - api_token: '$BITRISE_BUILD_TOKEN'
+          is_always_run: true
+  prod-android:
+    steps:
+      - activate-ssh-key@4:
+          run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+      - git-clone@6: {}
+      - cache-pull@2: {}
+      - nvm@1:
+          inputs:
+            - node_version: 14.17.3
+      - yarn@0:
+          inputs:
+            - verbose_log: 'yes'
+            - command: install
+          title: Run yarn install
+      - yarn@0:
+          title: Run yarn lint
+          inputs:
+            - verbose_log: 'yes'
+            - command: lint
+      - install-missing-android-tools@2: {}
+      - change-android-versioncode-and-versionname@1:
+          inputs:
+            - build_gradle_path: '$PROJECT_LOCATION/app/build.gradle'
+      - file-downloader@1:
+          inputs:
+            - destination: '$HOME/git/android/app/release.keystore'
+            - source: '$BITRISEIO_ANDROID_KEYSTORE_URL'
+      - android-build@0:
+          inputs:
+            - variant: release
+            - project_location: '$PROJECT_LOCATION'
+            - build_type: aab
+            - module: app
+      - google-play-deploy@3:
+          inputs:
+            - track: internal
+            - service_account_json_key_path: '$BITRISEIO_BITRISEIO_SERVICE_ACCOUNT_JSON_KEY_URL_URL'
+            - app_path: '$BITRISE_AAB_PATH'
+            - package_name: '$PRODUCTION_BUNDLE_ID'
+      - cache-push@2: {}
+      - slack@3:
+          inputs:
+            - webhook_url: '$SLACK_WEB_HOOK'
+  prod-ios:
+    steps:
+      - activate-ssh-key@4:
+          run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+      - git-clone@6: {}
+      - cache-pull@2: {}
+      - nvm@1:
+          inputs:
+            - node_version: 14.17.3
+      - yarn@0:
+          inputs:
+            - verbose_log: 'yes'
+            - command: install
+          title: Run yarn install
+      - yarn@0:
+          title: Run yarn lint
+          inputs:
+            - verbose_log: 'yes'
+            - command: lint
+      - cocoapods-install@2: {}
+      - set-xcode-build-number@1:
+          inputs:
+            - plist_path: '$PLIST_PATH_IOS'
+      - ios-auto-provision-appstoreconnect@2:
+          inputs:
+            - scheme: '$BITRISE_PRODUCTION_SCHEME'
+            - configuration: Release
+            - distribution_type: app-store
+      - xcode-archive@3:
+          inputs:
+            - compile_bitcode: 'no'
+            - team_id: '$APPLE_DEVELOPER_TEAM_ID'
+            - scheme: '$BITRISE_PRODUCTION_SCHEME'
+            - configuration: Release
+            - export_method: app-store
+      - deploy-to-itunesconnect-application-loader@1: {}
+      - cache-push@2: {}
+      - slack@3:
+          inputs:
+            - webhook_url: '$SLACK_WEB_HOOK'
+app:
+  envs:
+    - opts:
+        is_expand: false
+      PROJECT_LOCATION: android
+    - opts:
+        is_expand: false
+      MODULE: app
+    - opts:
+        is_expand: false
+      VARIANT: ''
+    - opts:
+        is_expand: false
+      BITRISE_PROJECT_PATH: ios/react-native.xcworkspace
+    - opts:
+        is_expand: false
+      BITRISE_SCHEME: react-native
+    - opts:
+        is_expand: false
+      BITRISE_EXPORT_METHOD: development
+    - opts:
+        is_expand: false
+      GRADLEW_PATH: android/gradlew
+    - opts:
+        is_expand: false
+      PLIST_PATH_IOS: ios/react-native/Info.plist
+    - opts:
+        is_expand: false
+      APPLE_DEVELOPER_TEAM_ID: 5UT64Z4SLQ
+    - opts:
+        is_expand: false
+      PRODUCTION_BUNDLE_ID: com.mindsea.react-native
+    - opts:
+        is_expand: false
+      BITRISE_PRODUCTION_SCHEME: react-native
+    - opts:
+        is_expand: false
+      APPLE_APP_ID: '1590548731'
+    - opts:
+        is_expand: false
+      APPLE_TEAM_NAME: MindSea Development Inc.
